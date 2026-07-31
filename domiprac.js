@@ -1,0 +1,668 @@
+import { Instance } from "cs_script/point_script";
+
+function findPlayerController(name) {
+  const playerControllers = Instance.GetAllPlayerControllers();
+  const playerController = playerControllers.find(
+    (p) => p.GetPlayerName() === name,
+  );
+  return playerController;
+}
+
+function killPlayer(name) {
+  const playerController = findPlayerController(name);
+  if (!playerController) {
+    Instance.Msg(`Player ${name} not found`);
+    return;
+  }
+
+  const pawn = playerController.GetPlayerPawn();
+  pawn.Kill();
+}
+
+function movePlayerToTeam(name, teamNum) {
+  const playerController = findPlayerController(name);
+  if (!playerController) {
+    Instance.Msg(`Player ${name} not found`);
+    return;
+  }
+
+  playerController.JoinTeam(teamNum);
+}
+
+function goto(caller, name) {
+  const callerPawn = caller.GetPlayerPawn();
+  const playerController = findPlayerController(name);
+  if (!playerController) {
+    Instance.Msg(`Player ${name} not found`);
+    return;
+  }
+  const playerPawn = playerController.GetPlayerPawn();
+  const absOrigin = playerPawn.GetAbsOrigin();
+  const absAngles = playerPawn.GetAbsAngles();
+  const absVelocity = callerPawn.GetAbsVelocity();
+  const absAngularVelocity = callerPawn.GetAbsAngularVelocity();
+
+  callerPawn.Teleport({
+    position: absOrigin,
+    angles: absAngles,
+    velocity: absVelocity,
+    angularVelocity: absAngularVelocity,
+  });
+}
+
+const checkpointPositions = new Map();
+
+function checkpoint(caller) {
+  const callerPawn = caller.GetPlayerPawn();
+  const absOrigin = callerPawn.GetAbsOrigin();
+  const absAngles = callerPawn.GetAbsAngles();
+  // not sure if player slot is constant for the time player is on the server.
+  // need to figure out if it changes when changing team etc.
+  checkpointPositions.set(caller.GetPlayerSlot(), {
+    position: absOrigin,
+    angles: absAngles,
+    velocity: {
+      x: 0,
+      y: 0,
+      z: 0,
+    },
+    angularVelocity: {
+      x: 0,
+      y: 0,
+      z: 0,
+    },
+  });
+}
+
+function teleport(caller) {
+  const checkpointPosition = checkpointPositions.get(caller.GetPlayerSlot());
+  if (!checkpointPosition) {
+    Instance.Msg("No checkpoint set yet");
+    return;
+  }
+  const callerPawn = caller.GetPlayerPawn();
+  callerPawn.Teleport(checkpointPosition);
+}
+
+function angleToForward(angles) {
+  const pitch = (angles.pitch * Math.PI) / 180;
+  const yaw = (angles.yaw * Math.PI) / 180;
+
+  return {
+    x: Math.cos(pitch) * Math.cos(yaw),
+    y: Math.cos(pitch) * Math.sin(yaw),
+    z: -Math.sin(pitch),
+  };
+}
+
+function getTracedPosition(pawn) {
+  const eyePos = pawn.GetEyePosition();
+  const eyeAngles = pawn.GetEyeAngles();
+
+  const forward = angleToForward(eyeAngles);
+
+  const trace = Instance.TraceLine({
+    start: eyePos,
+    end: {
+      x: eyePos.x + forward.x * 8192,
+      y: eyePos.y + forward.y * 8192,
+      z: eyePos.z + forward.z * 8192,
+    },
+    ignoreEntity: pawn,
+    ignorePlayers: true,
+  });
+
+  if (!trace.didHit) {
+    return null;
+  }
+
+  let position = {
+    x: trace.end.x,
+    y: trace.end.y,
+    z: trace.end.z,
+  };
+
+  // offset from walls and ceiling to prevent getting stuck
+  if (Math.abs(trace.normal.z) < 0.5) {
+    // 17 because 32/2+1 (32 is player bounding box width)
+    position.x += trace.normal.x * 17;
+    position.y += trace.normal.y * 17;
+  } else if (trace.normal.z < 0) {
+    // 73 because 72+1 (72 is player bounding box height)
+    position.z += trace.normal.z * 73;
+  }
+
+  return position;
+}
+
+function placePlayer(caller, name) {
+  const callerPawn = caller.GetPlayerPawn();
+  const playerController = findPlayerController(name);
+  if (!playerController) {
+    Instance.Msg(`Player ${name} not found`);
+    return;
+  }
+  const playerPawn = playerController.GetPlayerPawn();
+
+  const position = getTracedPosition(callerPawn);
+
+  if (!position) {
+    return;
+  }
+
+  playerPawn.Teleport({
+    position,
+    angles: playerPawn.GetAbsAngles(),
+    velocity: {
+      x: 0,
+      y: 0,
+      z: 0,
+    },
+    angularVelocity: {
+      x: 0,
+      y: 0,
+      z: 0,
+    },
+  });
+}
+
+const GIVE_PRESETS = {
+  t: [
+    {
+      name: "default",
+      items: [
+        "weapon_ak47",
+        "weapon_glock",
+        "weapon_hegrenade",
+        "weapon_flashbang",
+        "weapon_flashbang",
+        "weapon_smokegrenade",
+        "weapon_molotov",
+      ],
+      armor: true,
+      helmet: true,
+    },
+    {
+      name: "awp",
+      items: [
+        "weapon_awp",
+        "weapon_cz75a",
+        "weapon_hegrenade",
+        "weapon_flashbang",
+        "weapon_flashbang",
+        "weapon_smokegrenade",
+        "weapon_molotov",
+      ],
+      armor: true,
+      helmet: true,
+    },
+    {
+      name: "deagle",
+      items: ["weapon_deagle", "weapon_flashbang"],
+      armor: true,
+      helmet: false,
+    },
+  ],
+  ct: [
+    {
+      name: "default",
+      items: [
+        "weapon_m4a1",
+        "weapon_usp_silencer",
+        "weapon_hegrenade",
+        "weapon_flashbang",
+        "weapon_flashbang",
+        "weapon_smokegrenade",
+        "weapon_incgrenade",
+      ],
+      armor: true,
+      helmet: true,
+    },
+    {
+      name: "default2",
+      items: [
+        "weapon_m4a1_silencer",
+        "weapon_usp_silencer",
+        "weapon_hegrenade",
+        "weapon_flashbang",
+        "weapon_flashbang",
+        "weapon_smokegrenade",
+        "weapon_incgrenade",
+      ],
+      armor: true,
+      helmet: true,
+    },
+    {
+      name: "default3",
+      items: [
+        "weapon_m4a1",
+        "weapon_hkp2000",
+        "weapon_hegrenade",
+        "weapon_flashbang",
+        "weapon_flashbang",
+        "weapon_smokegrenade",
+        "weapon_incgrenade",
+      ],
+      armor: true,
+      helmet: true,
+    },
+    {
+      name: "default4",
+      items: [
+        "weapon_m4a1_silencer",
+        "weapon_hkp2000",
+        "weapon_hegrenade",
+        "weapon_flashbang",
+        "weapon_flashbang",
+        "weapon_smokegrenade",
+        "weapon_incgrenade",
+      ],
+      armor: true,
+      helmet: true,
+    },
+    {
+      name: "awp",
+      items: [
+        "weapon_awp",
+        "weapon_cz75a",
+        "weapon_hegrenade",
+        "weapon_flashbang",
+        "weapon_flashbang",
+        "weapon_smokegrenade",
+        "weapon_incgrenade",
+      ],
+      armor: true,
+      helmet: true,
+    },
+    {
+      name: "deagle",
+      items: ["weapon_deagle", "weapon_flashbang"],
+      armor: true,
+      helmet: false,
+    },
+  ],
+};
+
+function printParts(str, linesPerPart) {
+  const lines = str.split("\n");
+  for (let i = 0; i < lines.length; i += linesPerPart) {
+    Instance.Msg("\n" + lines.slice(i, i + linesPerPart).join("\n"));
+  }
+}
+
+function listPresets() {
+  const presetsString = JSON.stringify(GIVE_PRESETS, null, 2);
+  printParts(presetsString, 20);
+}
+
+function listKnives() {
+  const knivesString = JSON.stringify(KNIFE_CLASSES, null, 2);
+  printParts(knivesString, 20);
+}
+
+function getTeamString(teamNum) {
+  if (teamNum === 1) return "spec";
+  if (teamNum === 2) return "t";
+  if (teamNum === 3) return "ct";
+}
+
+function givePreset(caller, presetName) {
+  Instance.Msg(presetName);
+  const callerPawn = caller.GetPlayerPawn();
+  const callerTeam = getTeamString(callerPawn.GetTeamNumber());
+  const teamPresets = GIVE_PRESETS[callerTeam];
+  if (!teamPresets) {
+    Instance.Msg(`No presets available for your current team (${callerTeam})`);
+    return;
+  }
+  const preset = teamPresets.find((p) => p.name === presetName);
+
+  if (!preset) {
+    Instance.Msg(
+      `No preset found with name ${presetName}. !presets to see all presets.`,
+    );
+    return;
+  }
+
+  callerPawn.DestroyWeapons();
+
+  callerPawn.SetArmor(preset.armor === true ? 100 : 0);
+  callerPawn.SetHasHelmet(preset.helmet);
+
+  preset.items.forEach((item) => {
+    callerPawn.GiveNamedItem(item);
+  });
+}
+
+const WEAPON_CLASSES = [
+  "weapon_ak47",
+  "weapon_aug",
+  "weapon_awp",
+  "weapon_bizon",
+  "weapon_c4",
+  "weapon_cz75a",
+  "weapon_deagle",
+  "weapon_decoy",
+  "weapon_elite",
+  "weapon_famas",
+  "weapon_fiveseven",
+  "weapon_flashbang",
+  "weapon_g3sg1",
+  "weapon_galilar",
+  "weapon_glock",
+  "weapon_healthshot",
+  "weapon_hegrenade",
+  "weapon_hkp2000",
+  "weapon_incgrenade",
+  "weapon_knife",
+  "weapon_m249",
+  "weapon_m4a1",
+  "weapon_m4a1_silencer",
+  "weapon_mac10",
+  "weapon_mag7",
+  "weapon_molotov",
+  "weapon_mp5sd",
+  "weapon_mp7",
+  "weapon_mp9",
+  "weapon_negev",
+  "weapon_nova",
+  "weapon_p250",
+  "weapon_p90",
+  "weapon_revolver",
+  "weapon_sawedoff",
+  "weapon_scar20",
+  "weapon_sg556",
+  "weapon_smokegrenade",
+  "weapon_ssg08",
+  "weapon_taser",
+  "weapon_tec9",
+  "weapon_ump45",
+  "weapon_usp_silencer",
+  "weapon_xm1014",
+];
+
+function removeDroppedWeapons() {
+  WEAPON_CLASSES.forEach((w) => {
+    const weaponEnts = Instance.FindEntitiesByClass(w);
+    weaponEnts.forEach((ent) => {
+      if (!ent.GetParent()) {
+        ent.Remove();
+      }
+    });
+  });
+}
+
+// think queue from zoo thingy
+const thinkQueue = [];
+
+function QueueThink(time, callback) {
+  const indexAfter = thinkQueue.findIndex((t) => t.time > time);
+  if (indexAfter === -1) thinkQueue.push({ time, callback });
+  else thinkQueue.splice(indexAfter, 0, { time, callback });
+  if (indexAfter === 0 || indexAfter === -1) Instance.SetNextThink(time);
+}
+
+function RunThinkQueue() {
+  const upperThinkTime = Instance.GetGameTime() + 1 / 128;
+  while (thinkQueue.length > 0 && thinkQueue[0].time <= upperThinkTime) {
+    thinkQueue.shift().callback();
+  }
+  if (thinkQueue.length > 0) Instance.SetNextThink(thinkQueue[0].time);
+}
+
+function Delay(delay) {
+  return new Promise((resolve) =>
+    QueueThink(Instance.GetGameTime() + delay, resolve),
+  );
+}
+
+Instance.SetThink(() => {
+  RunThinkQueue();
+});
+
+const KNIFE_CLASSES = {
+  kukri: 526,
+  butterfly: 515,
+  karambit: 507,
+  m9: 508,
+  skeleton: 525,
+  nomad: 521,
+  bayonet: 500,
+  talon: 523,
+  classic: 503,
+  stiletto: 522,
+  flip: 505,
+  ursus: 519,
+  paracord: 517,
+  survival: 518,
+  huntsman: 509,
+  falchion: 512,
+  bowie: 514,
+  daggers: 516,
+  gut: 506,
+  navaja: 520,
+};
+
+async function giveKnife(caller, knifeName) {
+  const callerPawn = caller.GetPlayerPawn();
+
+  const name = `${knifeName}_${caller.GetPlayerSlot()}_${Math.floor(Instance.GetGameTime() * 1000)}`;
+  Instance.ServerCommand(
+    `ent_create ${KNIFE_CLASSES[knifeName]} {"targetname" "${name}"}`,
+  );
+
+  for (let attempts = 0; attempts < 20; attempts++) {
+    const knifeEnt = Instance.FindEntityByName(name);
+    if (knifeEnt) {
+      callerPawn.DestroyWeapon(callerPawn.FindWeaponBySlot(2));
+      knifeEnt.SetParent(callerPawn);
+      return;
+    }
+    await Delay(0.1);
+  }
+  Instance.Msg("giveKnife: gave up waiting for " + name);
+}
+
+function giveItem(caller, item) {
+  const callerPawn = caller.GetPlayerPawn();
+  callerPawn.GiveNamedItem(item);
+}
+
+const clearActions = {
+  smoke: () => {
+    Instance.ServerCommand("ent_remove_all smokegrenade_projectile");
+  },
+  fire: () => {
+    Instance.ServerCommand("ent_remove_all inferno");
+  },
+  decoys: () => {
+    Instance.ServerCommand("ent_remove_all decoy_projectile");
+  },
+  weapons: () => {
+    removeDroppedWeapons();
+  },
+};
+
+function clear(target) {
+  const action = clearActions[target];
+  if (!action) {
+    Instance.Msg(`Unknown clear target: ${target}. !help !clear for help`);
+    return;
+  }
+  action();
+}
+
+const giveActions = {
+  item: (caller, item) => {
+    giveItem(caller, item);
+  },
+  knife: (caller, item) => {
+    giveKnife(caller, item);
+  },
+  preset: (caller, item) => {
+    givePreset(caller, item);
+  },
+};
+
+function give(caller, type, item) {
+  const action = giveActions[type];
+
+  if (!action) {
+    Instance.Msg(`Unknown give type: ${type}. !help !give for help`);
+    return;
+  }
+
+  action(caller, item);
+}
+
+function help(command) {
+  if (command) {
+    Instance.Msg(`${command} - ${commands[command].description}`);
+  } else {
+    Object.entries(commands).forEach(([commandName, data]) => {
+      Instance.Msg(`${commandName} - ${data.description}`);
+    });
+  }
+}
+
+const commands = {
+  "!help": {
+    description: "This message.",
+    minArgs: 0,
+    action: (_, args) => {
+      help(args[0] ?? null);
+    },
+  },
+  "!give": {
+    description: `Gives player specified target. Usage: !give <${Object.keys(giveActions).join("/")}> <itemType (give equivalent/!knives/!presets)>`,
+    minArgs: 2,
+    action: (player, args) => {
+      give(player, args[0], args[1]);
+    },
+  },
+  "!knives": {
+    description: "Shows a list of knives to !give knife",
+    minArgs: 0,
+    action: () => {
+      listKnives();
+    },
+  },
+  "!presets": {
+    description: "Shows a list of presets to !give preset",
+    minArgs: 0,
+    action: () => {
+      listPresets();
+    },
+  },
+  "!clear": {
+    description: `Clears specified target. Usage: !clear <${Object.keys(clearActions).join("/")}>`,
+    minArgs: 1,
+    action: (_, args) => {
+      clear(args[0]);
+    },
+  },
+  // !check, !tele and !tpto instead of !cp, !tp and !goto to not conflict with cs2kz if used
+  "!check": {
+    description: "Places a checkpoint in player's current position.",
+    minArgs: 0,
+    action: (player, _) => {
+      checkpoint(player);
+    },
+  },
+  "!tele": {
+    description: "Teleports player to their last checkpoint position.",
+    minArgs: 0,
+    action: (player, _) => {
+      teleport(player);
+    },
+  },
+  "!tpto": {
+    description:
+      "Teleports player to a specified player. Usage: !tpto <playerName>",
+    minArgs: 1,
+    action: (player, args) => {
+      goto(player, args[0]);
+    },
+  },
+  "!place": {
+    description:
+      "Places specified player/self according to player's cursor. Usage: !place <playerName?>",
+    minArgs: 0,
+    action: (player, args) => {
+      placePlayer(player, args[0] ?? player.GetPlayerName());
+    },
+  },
+  "!kill": {
+    description: "Kills specified player/self. Usage: !kill <playerName?>",
+    minArgs: 0,
+    action: (player, args) => {
+      killPlayer(args[0] ?? player.GetPlayerName());
+    },
+  },
+  // shouldnt conflict with cs2kz, need to test
+  "!spec": {
+    description: "Puts player/self to spectators. Usage: !spec <playerName?>",
+    minArgs: 0,
+    action: (player, args) => {
+      movePlayerToTeam(args[0] ?? player.GetPlayerName(), 1);
+    },
+  },
+  "!t": {
+    description: "Puts player/self to terrorist. Usage: !t <playerName?>",
+    minArgs: 0,
+    action: (player, args) => {
+      movePlayerToTeam(args[0] ?? player.GetPlayerName(), 2);
+    },
+  },
+  "!ct": {
+    description: "Puts player/self to counter-terrorists. !ct <playerName?>",
+    minArgs: 0,
+    action: (player, args) => {
+      movePlayerToTeam(args[0] ?? player.GetPlayerName(), 3);
+    },
+  },
+};
+
+Instance.OnPlayerChat(({ player, text }) => {
+  // not a command
+  if (!text.startsWith("!")) return;
+
+  const parts = text
+    .replace(/[\u200B\u200C\u200D\uFEFF]/g, "") // remove invisible characters
+    .match(/"[^"]*"|\S+/g)
+    .map((p) => p.replace(/^"|"$/g, ""));
+
+  const commandName = parts[0];
+  const args = parts.slice(1);
+
+  const command = commands[commandName];
+
+  if (!command) return;
+
+  if (args.length < command.minArgs) {
+    Instance.Msg(`${commandName} requires ${command.minArgs} arguments.`);
+    return;
+  }
+
+  command.action(player, args);
+});
+
+Instance.OnPlayerDamage(({ damage, player, weapon, inflictor }) => {
+  if (!weapon || !inflictor) return;
+  if (inflictor.GetClassName() !== "player") return;
+
+  const playerController = player.GetPlayerController();
+  const attackerController = weapon.GetOwner().GetPlayerController();
+
+  const rawPlayerName = playerController.GetPlayerName();
+  const rawAttackerName = attackerController.GetPlayerName();
+
+  const playerName = playerController.IsBot()
+    ? `BOT ${rawPlayerName}`
+    : rawPlayerName;
+  const attackerName = attackerController.IsBot()
+    ? `BOT ${rawAttackerName}`
+    : rawAttackerName;
+
+  Instance.Msg(`[Damage] ${attackerName} -> ${playerName} (-${damage}hp)`);
+});
