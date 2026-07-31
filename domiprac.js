@@ -635,8 +635,6 @@ const commands = {
 };
 
 Instance.OnPlayerChat(({ player, text }) => {
-  Instance.Msg(player.GetPlayerSlot());
-
   // not a command
   if (!text.startsWith("!")) return;
 
