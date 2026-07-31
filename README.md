@@ -26,5 +26,5 @@ Commands:
 - (optional because included) Compile the script with `python vjs_compiler.py domiprac.js`
 - Place compiled script anywhere in your `game/csgo` folder (`game/csgo/scripts/domiprac.vjs_c` in my case)
 - Run practice
-- Create `point_script` entity using ent_create point_script {"cs_script" "path/to/script.vjs"} (`game/csgo` is considered root, so no need to enter it) (no _c is important)
+- Create `point_script` entity using `ent_create point_script {"cs_script" "path/to/script.vjs"}` (`game/csgo` is considered root, so no need to enter it) (no _c is important)
 - Done
