@@ -55,22 +55,11 @@ const checkpointPositions = new Map();
 function checkpoint(caller) {
   const callerPawn = caller.GetPlayerPawn();
   const absOrigin = callerPawn.GetAbsOrigin();
-  const absAngles = callerPawn.GetAbsAngles();
-  // not sure if player slot is constant for the time player is on the server.
-  // need to figure out if it changes when changing team etc.
+  const eyeAngles = callerPawn.GetEyeAngles();
+
   checkpointPositions.set(caller.GetPlayerSlot(), {
     position: absOrigin,
-    angles: absAngles,
-    velocity: {
-      x: 0,
-      y: 0,
-      z: 0,
-    },
-    angularVelocity: {
-      x: 0,
-      y: 0,
-      z: 0,
-    },
+    angles: eyeAngles,
   });
 }
 
@@ -80,8 +69,30 @@ function teleport(caller) {
     Instance.Msg("No checkpoint set yet");
     return;
   }
+
   const callerPawn = caller.GetPlayerPawn();
-  callerPawn.Teleport(checkpointPosition);
+  const { position, angles } = checkpointPosition;
+
+  // proper pitch will only be set for the host since setang command is "missing required FCVAR flag"
+  // making it impossible to setang with ClientCommand()
+
+  // assume host is always slot 0 (test if its actually true)
+  const isHost = caller.GetPlayerSlot() === 0;
+
+  callerPawn.Teleport({
+    position,
+    velocity: { x: 0, y: 0, z: 0 },
+    angularVelocity: { x: 0, y: 0, z: 0 },
+    ...(!isHost && {
+      angles: { pitch: 0, yaw: angles.yaw, roll: angles.roll },
+    }),
+  });
+
+  if (isHost) {
+    Instance.ServerCommand(
+      `setang ${angles.pitch} ${angles.yaw} ${angles.roll}`,
+    );
+  }
 }
 
 function angleToForward(angles) {
@@ -624,6 +635,8 @@ const commands = {
 };
 
 Instance.OnPlayerChat(({ player, text }) => {
+  Instance.Msg(player.GetPlayerSlot());
+
   // not a command
   if (!text.startsWith("!")) return;
 
