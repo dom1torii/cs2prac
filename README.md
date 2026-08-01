@@ -6,7 +6,7 @@ This script is made to make some useful practice things easier mainly by creatin
 
 Commands:
 ```
-!help - This message.
+!help - Shows help for commands. Usage: !help <commandName?>
 !give - Gives player specified target. Usage: !give <item/knife/preset> <itemType (give equivalent/!knives/!presets)>
 !knives - Shows a list of knives to !give knife
 !presets - Shows a list of presets to !give preset
