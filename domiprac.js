@@ -641,28 +641,44 @@ const commands = {
   },
 };
 
+function ping(name) {
+  const playerController = findPlayerController(name);
+  if (!playerController) {
+    Instance.Msg(`No player ${name} found.`);
+  }
+  Instance.ClientCommand(
+    playerController.GetPlayerSlot(),
+    "play sounds/training/bell_normal.vsnd",
+  );
+}
+
 Instance.OnPlayerChat(({ player, text }) => {
-  // not a command
-  if (!text.startsWith("!")) return;
-
-  const parts = text
-    .replace(/[\u200B\u200C\u200D\uFEFF]/g, "") // remove invisible characters
-    .match(/"[^"]*"|\S+/g)
-    .map((p) => p.replace(/^"|"$/g, ""));
-
-  const commandName = parts[0];
-  const args = parts.slice(1);
-
-  const command = commands[commandName];
-
-  if (!command) return;
-
-  if (args.length < command.minArgs) {
-    Instance.Msg(`${commandName} requires ${command.minArgs} arguments.`);
-    return;
+  if (text.startsWith("@")) {
+    const parts = text.match(/^@(\S+)/);
+    const playerName = parts[1];
+    ping(playerName);
   }
 
-  command.action(player, args);
+  if (text.startsWith("!")) {
+    const parts = text
+      .replace(/[\u200B\u200C\u200D\uFEFF]/g, "") // remove invisible characters
+      .match(/"[^"]*"|\S+/g)
+      .map((p) => p.replace(/^"|"$/g, ""));
+
+    const commandName = parts[0];
+    const args = parts.slice(1);
+
+    const command = commands[commandName];
+
+    if (!command) return;
+
+    if (args.length < command.minArgs) {
+      Instance.Msg(`${commandName} requires ${command.minArgs} arguments.`);
+      return;
+    }
+
+    command.action(player, args);
+  }
 });
 
 const flags = {
