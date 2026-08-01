@@ -19,6 +19,7 @@ Commands:
 !spec - Puts player/self to spectators. Usage: !spec <playerName?>
 !t - Puts player/self to terrorist. Usage: !t <playerName?>
 !ct - Puts player/self to counter-terrorists. !ct <playerName?>
+!showdamage - Toggle show dealt damage in console.
 ```
 
 ## How to use 
