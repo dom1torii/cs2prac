@@ -538,7 +538,7 @@ function help(command) {
 
 const commands = {
   "!help": {
-    description: "This message.",
+    description: "Shows help for commands. Usage: !help <commandName?>",
     minArgs: 0,
     action: (_, args) => {
       help(args[0] ?? null);
