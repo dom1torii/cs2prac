@@ -632,6 +632,13 @@ const commands = {
       movePlayerToTeam(args[0] ?? player.GetPlayerName(), 3);
     },
   },
+  "!showdamage": {
+    description: "Toggle show dealt damage in console.",
+    minArgs: 0,
+    action: () => {
+      toggleFlag("showDamage");
+    },
+  },
 };
 
 Instance.OnPlayerChat(({ player, text }) => {
@@ -658,7 +665,16 @@ Instance.OnPlayerChat(({ player, text }) => {
   command.action(player, args);
 });
 
-Instance.OnPlayerDamage(({ damage, player, weapon, inflictor }) => {
+const flags = {
+  showDamage: false,
+};
+
+function toggleFlag(name) {
+  flags[name] = !flags[name];
+  Instance.Msg(`${name} is now ${flags[name]}`);
+}
+
+function printDamage(damage, player, weapon, inflictor) {
   if (!weapon || !inflictor) return;
   if (inflictor.GetClassName() !== "player") return;
 
@@ -676,4 +692,10 @@ Instance.OnPlayerDamage(({ damage, player, weapon, inflictor }) => {
     : rawAttackerName;
 
   Instance.Msg(`[Damage] ${attackerName} -> ${playerName} (-${damage}hp)`);
+}
+
+Instance.OnPlayerDamage(({ damage, player, weapon, inflictor }) => {
+  if (flags.showDamage) {
+    printDamage(damage, player, weapon, inflictor);
+  }
 });
