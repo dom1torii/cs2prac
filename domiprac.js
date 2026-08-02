@@ -575,7 +575,7 @@ function give(caller, type, item) {
   echoMessageToPlayer(caller, `Gave ${type} ${item}`);
 }
 
-function help(command) {
+function help(caller, command) {
   if (command) {
     echoMessageToPlayer(
       caller,
