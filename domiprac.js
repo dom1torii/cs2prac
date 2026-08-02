@@ -1,5 +1,14 @@
 import { Instance } from "cs_script/point_script";
 
+const prefix = "[Prac]";
+
+// Instance.Msg() only sends the message to the host,
+// so we use echo on specified player's client instead
+function echoMessageToPlayer(playerController, message) {
+  const playerSlot = playerController.GetPlayerSlot();
+  Instance.ClientCommand(playerSlot, `echo ${prefix} ${message}`);
+}
+
 function findPlayerController(name) {
   const playerControllers = Instance.GetAllPlayerControllers();
   const playerController = playerControllers.find(
@@ -8,34 +17,37 @@ function findPlayerController(name) {
   return playerController;
 }
 
-function killPlayer(name) {
+function killPlayer(caller, name) {
   const playerController = findPlayerController(name);
   if (!playerController) {
-    Instance.Msg(`Player ${name} not found`);
+    echoMessageToPlayer(caller, `Player ${name} not found`);
     return;
   }
 
   const pawn = playerController.GetPlayerPawn();
   pawn.Kill();
+  echoMessageToPlayer(caller, `Killed ${name}.`);
 }
 
-function movePlayerToTeam(name, teamNum) {
+function movePlayerToTeam(caller, name, teamNum) {
   const playerController = findPlayerController(name);
   if (!playerController) {
-    Instance.Msg(`Player ${name} not found`);
+    echoMessageToPlayer(caller, `Player ${name} not found`);
     return;
   }
 
   playerController.JoinTeam(teamNum);
+  echoMessageToPlayer(caller, `Moved ${name} to team ${teamNum}`);
 }
 
 function goto(caller, name) {
   const callerPawn = caller.GetPlayerPawn();
   const playerController = findPlayerController(name);
   if (!playerController) {
-    Instance.Msg(`Player ${name} not found`);
+    echoMessageToPlayer(caller, `Player ${name} not found`);
     return;
   }
+
   const playerPawn = playerController.GetPlayerPawn();
   const absOrigin = playerPawn.GetAbsOrigin();
   const absAngles = playerPawn.GetAbsAngles();
@@ -48,6 +60,9 @@ function goto(caller, name) {
     velocity: absVelocity,
     angularVelocity: absAngularVelocity,
   });
+
+  const callerName = caller.GetPlayerName();
+  echoMessageToPlayer(caller, `Teleported ${callerName} to ${name}`);
 }
 
 const checkpointPositions = new Map();
@@ -61,12 +76,17 @@ function checkpoint(caller) {
     position: absOrigin,
     angles: eyeAngles,
   });
+
+  echoMessageToPlayer(
+    caller,
+    `Set a checkpoint at ${JSON.stringify(absOrigin)} with angles ${JSON.stringify(eyeAngles)}`,
+  );
 }
 
 function teleport(caller) {
   const checkpointPosition = checkpointPositions.get(caller.GetPlayerSlot());
   if (!checkpointPosition) {
-    Instance.Msg("No checkpoint set yet");
+    echoMessageToPlayer(caller, `No checkpoint set yet`);
     return;
   }
 
@@ -84,13 +104,22 @@ function teleport(caller) {
     velocity: { x: 0, y: 0, z: 0 },
     angularVelocity: { x: 0, y: 0, z: 0 },
     ...(!isHost && {
-      angles: { pitch: 0, yaw: angles.yaw, roll: angles.roll },
+      angles: { ...angles, pitch: 0 },
     }),
   });
 
   if (isHost) {
     Instance.ServerCommand(
       `setang ${angles.pitch} ${angles.yaw} ${angles.roll}`,
+    );
+    echoMessageToPlayer(
+      caller,
+      `Teleported to a checkpoint at ${JSON.stringify(position)} with angles ${JSON.stringify(angles)}`,
+    );
+  } else {
+    echoMessageToPlayer(
+      caller,
+      `Teleported to a checkpoint at ${JSON.stringify(position)} with angles ${JSON.stringify({ ...angles, pitch: 0 })}`,
     );
   }
 }
@@ -150,7 +179,7 @@ function placePlayer(caller, name) {
   const callerPawn = caller.GetPlayerPawn();
   const playerController = findPlayerController(name);
   if (!playerController) {
-    Instance.Msg(`Player ${name} not found`);
+    echoMessageToPlayer(caller, `Player ${name} not found`);
     return;
   }
   const playerPawn = playerController.GetPlayerPawn();
@@ -175,6 +204,11 @@ function placePlayer(caller, name) {
       z: 0,
     },
   });
+
+  echoMessageToPlayer(
+    caller,
+    `Placed ${name} to position ${JSON.stringify(position)} with angles ${JSON.stringify(angles)}`,
+  );
 }
 
 const GIVE_PRESETS = {
@@ -294,21 +328,21 @@ const GIVE_PRESETS = {
   ],
 };
 
-function printParts(str, linesPerPart) {
+function printLines(caller, str) {
   const lines = str.split("\n");
-  for (let i = 0; i < lines.length; i += linesPerPart) {
-    Instance.Msg("\n" + lines.slice(i, i + linesPerPart).join("\n"));
+  for (const i in lines) {
+    echoMessageToPlayer(caller, lines[i]);
   }
 }
 
-function listPresets() {
+function listPresets(caller) {
   const presetsString = JSON.stringify(GIVE_PRESETS, null, 2);
-  printParts(presetsString, 20);
+  printLines(caller, presetsString);
 }
 
-function listKnives() {
+function listKnives(caller) {
   const knivesString = JSON.stringify(KNIFE_CLASSES, null, 2);
-  printParts(knivesString, 20);
+  printLines(caller, knivesString);
 }
 
 function getTeamString(teamNum) {
@@ -318,19 +352,22 @@ function getTeamString(teamNum) {
 }
 
 function givePreset(caller, presetName) {
-  Instance.Msg(presetName);
   const callerPawn = caller.GetPlayerPawn();
   const callerTeam = getTeamString(callerPawn.GetTeamNumber());
   const teamPresets = GIVE_PRESETS[callerTeam];
   if (!teamPresets) {
-    Instance.Msg(`No presets available for your current team (${callerTeam})`);
+    echoMessageToPlayer(
+      caller,
+      `No presets available for your current team (${callerTeam})`,
+    );
     return;
   }
   const preset = teamPresets.find((p) => p.name === presetName);
 
   if (!preset) {
-    Instance.Msg(
-      `No preset found with name ${presetName}. !presets to see all presets.`,
+    echoMessageToPlayer(
+      caller,
+      `No presets found with name ${presetName}. !presets to see all presets`,
     );
     return;
   }
@@ -343,6 +380,8 @@ function givePreset(caller, presetName) {
   preset.items.forEach((item) => {
     callerPawn.GiveNamedItem(item);
   });
+
+  echoMessageToPlayer(caller, `Gave preset ${presetName}`);
 }
 
 const WEAPON_CLASSES = [
@@ -403,14 +442,15 @@ function removeDroppedWeapons() {
   });
 }
 
-// think queue from zoo thingy
+// think queue from zoo thingy fixed to work as an actual queue
 const thinkQueue = [];
 
 function QueueThink(time, callback) {
+  const empty = thinkQueue.length === 0;
   const indexAfter = thinkQueue.findIndex((t) => t.time > time);
   if (indexAfter === -1) thinkQueue.push({ time, callback });
   else thinkQueue.splice(indexAfter, 0, { time, callback });
-  if (indexAfter === 0 || indexAfter === -1) Instance.SetNextThink(time);
+  if (indexAfter === 0 || empty) Instance.SetNextThink(time);
 }
 
 function RunThinkQueue() {
@@ -471,7 +511,7 @@ async function giveKnife(caller, knifeName) {
     }
     await Delay(0.1);
   }
-  Instance.Msg("giveKnife: gave up waiting for " + name);
+  echoMessageToPlayer(caller, `giveKnife: gave up waiting for ${name}`);
 }
 
 function giveItem(caller, item) {
@@ -494,13 +534,17 @@ const clearActions = {
   },
 };
 
-function clear(target) {
+function clear(caller, target) {
   const action = clearActions[target];
   if (!action) {
-    Instance.Msg(`Unknown clear target: ${target}. !help !clear for help`);
+    echoMessageToPlayer(
+      caller,
+      `Unknown clear target: ${target}. !help !clear for help`,
+    );
     return;
   }
   action();
+  echoMessageToPlayer(caller, `Cleared all ${target}`);
 }
 
 const giveActions = {
@@ -519,19 +563,27 @@ function give(caller, type, item) {
   const action = giveActions[type];
 
   if (!action) {
-    Instance.Msg(`Unknown give type: ${type}. !help !give for help`);
+    echoMessageToPlayer(
+      caller,
+      `Unknown give type: ${type}. !help !give for help`,
+    );
     return;
   }
 
   action(caller, item);
+
+  echoMessageToPlayer(caller, `Gave ${type} ${item}`);
 }
 
 function help(command) {
   if (command) {
-    Instance.Msg(`${command} - ${commands[command].description}`);
+    echoMessageToPlayer(
+      caller,
+      `${command} - ${commands[command].description}`,
+    );
   } else {
     Object.entries(commands).forEach(([commandName, data]) => {
-      Instance.Msg(`${commandName} - ${data.description}`);
+      echoMessageToPlayer(caller, `${commandName} - ${data.description}`);
     });
   }
 }
@@ -540,8 +592,8 @@ const commands = {
   "!help": {
     description: "Shows help for commands. Usage: !help <commandName?>",
     minArgs: 0,
-    action: (_, args) => {
-      help(args[0] ?? null);
+    action: (player, args) => {
+      help(player, args[0] ?? null);
     },
   },
   "!give": {
@@ -554,22 +606,22 @@ const commands = {
   "!knives": {
     description: "Shows a list of knives to !give knife",
     minArgs: 0,
-    action: () => {
-      listKnives();
+    action: (player, _) => {
+      listKnives(player);
     },
   },
   "!presets": {
     description: "Shows a list of presets to !give preset",
     minArgs: 0,
-    action: () => {
-      listPresets();
+    action: (player, _) => {
+      listPresets(player);
     },
   },
   "!clear": {
     description: `Clears specified target. Usage: !clear <${Object.keys(clearActions).join("/")}>`,
     minArgs: 1,
-    action: (_, args) => {
-      clear(args[0]);
+    action: (player, args) => {
+      clear(player, args[0]);
     },
   },
   // !check, !tele and !tpto instead of !cp, !tp and !goto to not conflict with cs2kz if used
@@ -607,7 +659,7 @@ const commands = {
     description: "Kills specified player/self. Usage: !kill <playerName?>",
     minArgs: 0,
     action: (player, args) => {
-      killPlayer(args[0] ?? player.GetPlayerName());
+      killPlayer(player, args[0] ?? player.GetPlayerName());
     },
   },
   // shouldnt conflict with cs2kz, need to test
@@ -615,36 +667,36 @@ const commands = {
     description: "Puts player/self to spectators. Usage: !spec <playerName?>",
     minArgs: 0,
     action: (player, args) => {
-      movePlayerToTeam(args[0] ?? player.GetPlayerName(), 1);
+      movePlayerToTeam(player, args[0] ?? player.GetPlayerName(), 1);
     },
   },
   "!t": {
     description: "Puts player/self to terrorist. Usage: !t <playerName?>",
     minArgs: 0,
     action: (player, args) => {
-      movePlayerToTeam(args[0] ?? player.GetPlayerName(), 2);
+      movePlayerToTeam(player, args[0] ?? player.GetPlayerName(), 2);
     },
   },
   "!ct": {
     description: "Puts player/self to counter-terrorists. !ct <playerName?>",
     minArgs: 0,
     action: (player, args) => {
-      movePlayerToTeam(args[0] ?? player.GetPlayerName(), 3);
+      movePlayerToTeam(player, args[0] ?? player.GetPlayerName(), 3);
     },
   },
   "!showdamage": {
     description: "Toggle show dealt damage in console.",
     minArgs: 0,
-    action: () => {
-      toggleFlag("showDamage");
+    action: (player, _) => {
+      toggleFlag(player, "showDamage");
     },
   },
 };
 
-function ping(name) {
+function ping(caller, name) {
   const playerController = findPlayerController(name);
   if (!playerController) {
-    Instance.Msg(`No player ${name} found.`);
+    echoMessageToPlayer(caller, `Player ${name} not found`);
   }
   Instance.ClientCommand(
     playerController.GetPlayerSlot(),
@@ -656,7 +708,7 @@ Instance.OnPlayerChat(({ player, text }) => {
   if (text.startsWith("@")) {
     const parts = text.match(/^@(\S+)/);
     const playerName = parts[1];
-    ping(playerName);
+    ping(player, playerName);
   }
 
   if (text.startsWith("!")) {
@@ -673,7 +725,10 @@ Instance.OnPlayerChat(({ player, text }) => {
     if (!command) return;
 
     if (args.length < command.minArgs) {
-      Instance.Msg(`${commandName} requires ${command.minArgs} arguments.`);
+      echoMessageToPlayer(
+        player,
+        `${commandName} requires ${command.minArgs} arguments`,
+      );
       return;
     }
 
@@ -685,9 +740,9 @@ const flags = {
   showDamage: false,
 };
 
-function toggleFlag(name) {
+function toggleFlag(caller, name) {
   flags[name] = !flags[name];
-  Instance.Msg(`${name} is now ${flags[name]}`);
+  echoMessageToPlayer(caller, `${name} is now ${flags[name]}`);
 }
 
 function printDamage(damage, player, weapon, inflictor) {
@@ -707,7 +762,9 @@ function printDamage(damage, player, weapon, inflictor) {
     ? `BOT ${rawAttackerName}`
     : rawAttackerName;
 
-  Instance.Msg(`[Damage] ${attackerName} -> ${playerName} (-${damage}hp)`);
+  const damageString = `[Damage] ${attackerName} -> ${playerName} (-${damage}hp)`;
+  echoMessageToPlayer(attackerController, damageString);
+  echoMessageToPlayer(playerController, damageString);
 }
 
 Instance.OnPlayerDamage(({ damage, player, weapon, inflictor }) => {
