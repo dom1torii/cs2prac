@@ -2,7 +2,8 @@
 This script is made to make some useful practice things easier mainly by creating some chat !commands with cs_script.
 
 ## Features
-- Show how much damage was dealt when shooting someone in console.  
+- Show how much damage was dealt when shooting someone in console.
+- Ping players by typing `@name` in chat.
 
 Commands:
 ```
