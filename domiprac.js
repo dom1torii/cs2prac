@@ -380,8 +380,6 @@ function givePreset(caller, presetName) {
   preset.items.forEach((item) => {
     callerPawn.GiveNamedItem(item);
   });
-
-  echoMessageToPlayer(caller, `Gave preset ${presetName}`);
 }
 
 const WEAPON_CLASSES = [
